@@ -1,0 +1,80 @@
+desc: zk fm 1
+
+slider1:0.5<0.0,1.0,.01>volume adjustment
+slider2:440<100,2200,1>frequency adjustment
+slider3:2.5<0.1,10,.01>op2 proportion
+
+@slider
+  volume = slider1;
+  freq = slider2;
+  dPhase =  freq / srate;
+  dTheta = dPhase * 2 * $pi;
+  Q = slider3;
+  doTheta = dTheta * Q;
+
+@init
+freq = 440;
+dPhase =  freq / srate;
+dTheta = dPhase * 2 * $pi;
+theta = 0;
+Q = 2.5;
+newQ = 2.5;
+doTheta = dTheta * Q;
+oTheta = 0;
+volume = 0.5;
+epsilon = .001;
+dA = .01;
+dD = .0001;
+attack = 0;
+decay = 0;
+env = 0;
+
+//stole this from http://hoedje.com/blog/?post=9
+a = 440; // a is 440 hz...
+MIDI = 0;
+while (MIDI < 127)(
+    frequency[MIDI] = (a/32) * pow(2,((MIDI-9)/12));
+    MIDI = MIDI + 1;
+)
+//end stolen code
+
+@block
+                
+while (midirecv(offset,msg1,msg2,msg3)) ( // REAPER 4.59+ syntax while()
+     midisend(offset,msg1,msg2,msg3); // passthrough other events
+     msg1==$x90 && msg3!=0 ? (
+     freq = frequency[msg2];
+     dPhase =  freq / srate;
+     dTheta = dPhase * 2 * $pi;
+     doTheta = dTheta *Q;
+     attack = 1;
+     decay = 0;
+     Q = msg3 / 128;
+     );
+);
+    
+    
+@sample
+  spl0 = spl0 + volume * env * (sin((oTheta) + sin(theta)));
+  spl1 = spl1 + volume * env * (sin((oTheta) + sin(theta)));
+  theta = theta + dTheta;
+  oTheta =  oTheta + doTheta;
+  (attack == 1) ? 
+      ((env > 0.9) ? 
+        (
+          attack = 0;
+          decay = 1;
+        ) : 
+        (
+          env = env + dA;
+        )) :
+  
+  ((decay == 1) ? 
+      ((env <= 0.0) ? 
+        (
+          attack = 0;
+          decay = 0;
+        ) : 
+        (
+          env = max ((env - dD), 0);
+        )))

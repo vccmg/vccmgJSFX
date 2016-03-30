@@ -1,0 +1,24 @@
+//zach kondak
+desc: simple sine
+
+slider1:0.5<0.0,1.0,0.01>volume adjustment
+slider2:440<100,2200,1>pitch
+
+@slider
+volume = slider1;
+freq = slider2;
+dPhase = freq / srate;
+dTheta = (dPhase) * 2 * $pi;
+
+
+@init
+volume = 0.5;
+freq = 440;
+dPhase = freq / srate;
+dTheta = (dPhase) * 2 * $pi;
+theta = 0;
+
+@sample
+  spl0 = volume * sin(theta);
+  spl1 = volume * sin(theta);
+  theta = theta + dTheta;

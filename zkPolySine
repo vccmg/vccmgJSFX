@@ -1,0 +1,140 @@
+desc: zk poly sine
+
+slider1:0.5<0.0,1.0,.01>volume adjustment
+slider2:.01<0,.5,.001>Attack
+slider3:.1<0,.5,.001>Decay
+slider4:.8<0,1,.001>Sustain
+slider5:2<0,5,.001>Release
+slider6:50<0,100,1>Brightness
+
+@slider
+  volume = pow(slider1, 2);
+  dA = 1 / (max(.01, slider2) * srate);
+  dD = 1 / (max(.01, slider3) * srate);
+  sustain = pow(min(1, max(slider4, 0)), 2);
+  dR = 1 / (max(.01, slider5) * srate);
+  newBr = max(min(slider6, 1000), 0);
+
+@init
+//initial memory offset
+memoryLocation=0;
+//size of your param arrays
+arraySize=128;
+
+br = 50;
+newBr = 50;
+dBr = .001;
+
+//to add allocate your own memory, set initial
+//adress to "memoryLocation", then increment 
+//"memoryLocation" by the desired length of your buffer
+
+freq = memoryLocation;
+memoryLocation += arraySize;
+dPhase = memoryLocation;
+memoryLocation += arraySize;
+dTheta = memoryLocation;
+memoryLocation += arraySize;
+theta = memoryLocation;
+memoryLocation += arraySize;
+numVoices = 20;
+activeVoices = memoryLocation;
+memoryLocation += numVoices;
+//0 = off, 1 = on
+onOrOff = memoryLocation;
+memoryLocation += arraySize;
+frequency = memoryLocation;
+memoryLocation += arraySize;
+vel = memoryLocation;
+memoryLocation += arraySize;
+newVel = memoryLocation;
+memoryLocation += arraySize;
+Af = 3;
+Df = 2;
+Sf = 1;
+Rf = 0;
+dA = .0001;
+dD = .0001;
+sustain = .5;
+dR = .0001;
+adsr = memoryLocation;
+memoryLocation += arraySize;
+env = memoryLocation;
+memoryLocation += arraySize;
+dVel = .001;
+currentVoice = 0;
+VOICE_OFF = 999;
+while (currentVoice < numVoices)
+  (
+  activeVoices[currentVoice] = VOICE_OFF;
+  currentVoice += 1;
+);
+currentVoice = 0;
+epsilon = .0001;
+//stole this from http://hoedje.com/blog/?post=9
+a = 440; // a is 440 hz...
+MIDI = 0;
+while (MIDI < 127)(
+    frequency[MIDI] = (a/32) * pow(2,((MIDI-9)/12));
+    freq[MIDI] = frequency[MIDI];
+    dPhase[MIDI] =  freq[MIDI] / srate;
+    dTheta[MIDI] = dPhase[MIDI] * 2 * $pi;
+    MIDI = MIDI + 1;
+);
+//end stolen code
+
+
+@block
+while (midirecv(offset,msg1,msg2,msg3)) 
+      ( // REAPER 4.59+ syntax while()
+      midisend(offset,msg1,msg2,msg3); // passthrough other events
+      (msg1==$x90 && msg3!=0) ? 
+        (
+        currentVoice = 0;
+        nextVoice = -1;
+        dontAdd = 0;
+        while (currentVoice < numVoices)
+          (
+          (activeVoices[currentVoice] == VOICE_OFF) ? (nextVoice = currentVoice);
+          (msg2 == activeVoices[currentVoice]) ? (dontAdd = 1);
+          currentVoice += 1;
+          );
+        ((nextVoice != -1) && (dontAdd == 0)) ? (activeVoices[nextVoice] = msg2);
+        onOrOff[msg2] = 1;
+        newVel[msg2] = (msg3 / 128);
+        ) : 
+        (
+        (msg1==$x90 && msg3==0) ?
+          (
+          onOrOff[msg2] = 0;
+          );
+        )
+      );
+    
+    
+@sample
+  i = 0;
+  while (i < numVoices)
+    (
+    (activeVoices[i] != VOICE_OFF) ? 
+      (
+      f = activeVoices[i];
+      (onOrOff[f] === 1) ? 
+        (
+        (adsr[f] == Af) ? ((env[f] >= 1.0) ? (adsr[f] = Df) : (env[f] = env[f] + dA););
+        (adsr[f] == Df) ? ((env[f] <= sustain) ? (adsr[f] = Sf) : (env[f] = env[f] - dD););
+        (adsr[f] == Rf) ? (adsr[f] = Af);
+        ) :
+        (
+        adsr[f] = Rf;
+        (env[f] <= 0) ? (activeVoices[i] = VOICE_OFF) : (env[f] = env[f] - dR);
+        );
+        sampVal = (volume * vel[f] * (env[f] * env[f] * pow(sin(theta[f]), 1 + (vel[f] * env[f] * br))));
+        spl0 = spl0 + sampVal;
+        spl1 = spl1 + sampVal;
+        theta[f] = theta[f] + dTheta[f];
+        (abs(vel[f] - newVel[f]) > dVel) ? (vel[f] = vel[f] - (.005 * (vel[f] - newVel[f])));
+      );
+    i += 1;
+    );
+  (abs(br - newBr) > dBr) ? (br = br - (.005 * (br - newBr))) : ((spl0 < epsilon)? (br = newBr););
