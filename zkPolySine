@@ -90,6 +90,7 @@ while (midirecv(offset,msg1,msg2,msg3))
       midisend(offset,msg1,msg2,msg3); // passthrough other events
       (msg1==$x90 && msg3!=0) ? 
         (
+        
         currentVoice = 0;
         nextVoice = -1;
         dontAdd = 0;
@@ -104,7 +105,7 @@ while (midirecv(offset,msg1,msg2,msg3))
         newVel[msg2] = (msg3 / 128);
         ) : 
         (
-        (msg1==$x90 && msg3==0) ?
+        (msg3==0) ?
           (
           onOrOff[msg2] = 0;
           );
